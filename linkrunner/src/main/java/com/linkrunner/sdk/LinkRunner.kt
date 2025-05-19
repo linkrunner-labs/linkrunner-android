@@ -3,9 +3,7 @@ package com.linkrunner.sdk
 import android.content.Context
 import android.net.Uri
 import androidx.annotation.Keep
-import com.linkrunner.sdk.models.request.CapturePaymentRequest
-import com.linkrunner.sdk.models.request.RemovePaymentRequest
-import com.linkrunner.sdk.models.request.UserDataRequest
+import com.linkrunner.sdk.models.request.*
 import com.linkrunner.sdk.models.response.InitResponse
 import com.linkrunner.sdk.models.response.TriggerResponse
 import com.linkrunner.sdk.network.ApiClient
@@ -14,12 +12,12 @@ import com.linkrunner.sdk.utils.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import java.util.*
+import android.util.Log
 
 /**
  * Main entry point for the LinkRunner SDK.
@@ -27,60 +25,54 @@ import java.util.*
  */
 @Keep
 class LinkRunner private constructor() {
-
-    private var isInitialized = false
-    private var token: String? = null
-    private val appContext: Context by lazy { applicationContext ?: throw IllegalStateException("Context not set") }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val preferenceManager by lazy { PreferenceManager(appContext) }
-    private val deviceInfoProvider by lazy { DeviceInfoProvider(appContext) }
     
+    var token: String? = null
+    private val packageVersion = "1.0.0"
+    
+    private val baseUrl = "https://api.linkrunner.io"
     private var applicationContext: Context? = null
-    private var deeplinkUrl: String? = null
     
     companion object {
         @Volatile
         private var instance: LinkRunner? = null
-        private const val PREF_NAME = "linkrunner_prefs"
         private const val KEY_INSTALL_ID = "install_instance_id"
         private const val KEY_DEEPLINK_URL = "deeplink_url"
         
         /**
-         * Initialize the LinkRunner SDK.
-         * @param context Application context
-         * @param token Your LinkRunner API token
-         * @return Singleton instance of LinkRunner
-         */
-        @JvmStatic
-        @Synchronized
-        fun initialize(context: Context, token: String): LinkRunner {
-            return instance ?: synchronized(this) {
-                instance ?: LinkRunner().apply {
-                    this.token = token
-                    this.applicationContext = context.applicationContext
-                    initializeDependencies()
-                    isInitialized = true
-                }.also { instance = it }
-            }
-        }
-        
-        /**
          * Get the singleton instance of LinkRunner.
-         * @throws IllegalStateException if initialize() has not been called
          */
         @JvmStatic
         fun getInstance(): LinkRunner {
-            return instance ?: throw IllegalStateException(
-                "LinkRunner must be initialized first. Call LinkRunner.initialize(context, token)"
-            )
+            return instance ?: synchronized(this) {
+                instance ?: LinkRunner().also { instance = it }
+            }
         }
         
         private fun generateInstallId(): String = UUID.randomUUID().toString()
     }
     
-    private fun initializeDependencies() {
+    /**
+     * Initialize dependencies for the SDK
+     * @param context Application context
+     * @param token Your LinkRunner API token
+     * @param link Optional deeplink URL
+     * @param source Optional source parameter
+     * @return Result containing the initialization response or an exception
+     */
+    suspend fun init(context: Context, token: String, link: String? = null, source: String? = null): Result<InitResponse> {
+        this.token = token
+        this.applicationContext = context.applicationContext
+        
+        // Initialize dependencies
+        initializeDependencies(context.applicationContext)
+        
+        return initApi(link, source)
+    }
+    
+    private fun initializeDependencies(context: Context) {
+        stopKoin()
         startKoin {
-            androidContext(appContext)
+            androidContext(context)
             modules(appModule)
         }
     }
@@ -89,15 +81,12 @@ class LinkRunner private constructor() {
         single { ApiClient(get()) }
     }
     
-    private fun requireInitialized() {
-        check(isInitialized) { "LinkRunner must be initialized first" }
-    }
-    
     private fun getApiClient(): ApiClient {
         return org.koin.java.KoinJavaComponent.get(ApiClient::class.java)
     }
     
     private fun getOrCreateInstallId(): String {
+        val preferenceManager = PreferenceManager(applicationContext ?: throw IllegalStateException("Context not set"))
         return preferenceManager.getString(KEY_INSTALL_ID).takeIf { it.isNotEmpty() } ?: run {
             val newId = generateInstallId()
             preferenceManager.saveString(KEY_INSTALL_ID, newId)
@@ -106,41 +95,38 @@ class LinkRunner private constructor() {
     }
     
     private fun saveDeeplinkUrl(url: String) {
+        val preferenceManager = PreferenceManager(applicationContext ?: throw IllegalStateException("Context not set"))
         preferenceManager.saveString(KEY_DEEPLINK_URL, url)
     }
     
     private fun loadDeeplinkUrl(): String? {
+        val preferenceManager = PreferenceManager(applicationContext ?: throw IllegalStateException("Context not set"))
         return preferenceManager.getString(KEY_DEEPLINK_URL).takeIf { it.isNotEmpty() }
     }
     
-    /**
-     * Initialize the SDK with optional deeplink handling
-     * @param link Optional deeplink URL
-     * @param source Optional source parameter
-     * @return Result containing the initialization response or an exception
-     */
-    suspend fun init(link: String? = null, source: String? = null): Result<InitResponse> {
-        requireInitialized()
-        
+    private suspend fun initApi(link: String? = null, source: String? = null): Result<InitResponse> {
         return try {
+            val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
             
-            val response = getApiClient().apiService.initialize(
-                mapOf(
-                    "token" to token,
-                    "package_version" to "1.0.0",
-                    "device_data" to deviceInfo,
-                    "platform" to "ANDROID",
-                    "link" to link,
-                    "source" to source,
-                    "install_instance_id" to installId
-                )
+            // Create a proper request object instead of a raw map
+            val initRequest = InitRequest(
+                token = token ?: "",
+                package_version = packageVersion,
+                device_data = deviceInfo,
+                platform = "ANDROID",
+                install_instance_id = installId,
+                link = link,
+                source = source
             )
+            
+            // Log the request object
+            Log.d("LinkRunner", "Init Request: $initRequest")
+            val response = getApiClient().apiService.initialize(initRequest)
             
             ApiClient.handleResponse(response).onSuccess { initResponse ->
                 initResponse.deeplink?.let { url ->
-                    deeplinkUrl = url
                     saveDeeplinkUrl(url)
                 }
             }
@@ -148,6 +134,8 @@ class LinkRunner private constructor() {
             Result.failure(e)
         }
     }
+    
+
     
     /**
      * Track a user signup event
@@ -159,23 +147,47 @@ class LinkRunner private constructor() {
         userData: UserDataRequest,
         additionalData: Map<String, Any>? = null
     ): Result<TriggerResponse> {
-        requireInitialized()
+        if (token == null) {
+            return Result.failure(Exception("Linkrunner token not initialized"))
+        }
         
         return try {
+            val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
             
-            val requestData = mutableMapOf<String, Any>(
-                "token" to token!!,
-                "user_data" to userData,
-                "platform" to "ANDROID",
-                "data" to (additionalData?.toMutableMap() ?: mutableMapOf()).apply {
-                    put("device_data", deviceInfo)
-                },
-                "install_instance_id" to installId
+            // Create a TriggerRequest object matching Flutter SDK structure
+            // Convert UserDataRequest to a Map to match Flutter's approach
+            val userDataMap = mapOf<String, Any?>(
+                "id" to userData.id,
+                "name" to userData.name,
+                "email" to userData.email,
+                "phone" to userData.phone,
+                "mixpanel_distinct_id" to userData.mixpanelDistinctId,
+                "amplitude_device_id" to userData.amplitudeDeviceId,
+                "posthog_distinct_id" to userData.posthogDistinctId
             )
             
-            val response = getApiClient().apiService.trigger(requestData)
+            // Create data map with device info and additional data
+            val dataMap = mutableMapOf<String, Any>(
+                "device_data" to deviceInfo
+            )
+            
+            // Add any additional data if provided
+            additionalData?.let { dataMap.putAll(it) }
+            
+            val triggerRequest = TriggerRequest(
+                token = token!!,
+                user_data = userDataMap,
+                platform = "ANDROID",
+                data = dataMap,
+                install_instance_id = installId,
+                event = "SIGNUP"
+            )
+            
+            // Log the request object
+            Log.d("LinkRunner", "Trigger Request: $triggerRequest")
+            val response = getApiClient().apiService.trigger(triggerRequest)
             ApiClient.handleResponse(response)
         } catch (e: Exception) {
             Result.failure(e)
@@ -187,23 +199,34 @@ class LinkRunner private constructor() {
      * @param paymentData Payment data to be tracked
      */
     suspend fun capturePayment(paymentData: CapturePaymentRequest): Result<Unit> {
-        requireInitialized()
+        if (token == null) {
+            return Result.failure(Exception("Linkrunner token not initialized"))
+        }
         
         return try {
+            val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
             
-            val response = getApiClient().apiService.capturePayment(
-                mapOf(
-                    "token" to token!!,
-                    "platform" to "ANDROID",
-                    "data" to mapOf("device_data" to deviceInfo),
-                    "payment_id" to paymentData.paymentId,
-                    "user_id" to paymentData.userId,
-                    "amount" to paymentData.amount,
-                    "install_instance_id" to installId
-                )
+            // Create data map with device info
+            val dataMap = mapOf<String, Any>(
+                "device_data" to deviceInfo
             )
+            
+            // Create a proper CapturePaymentApiRequest object
+            val capturePaymentRequest = CapturePaymentApiRequest(
+                token = token ?: "",
+                platform = "ANDROID",
+                data = dataMap,
+                payment_id = paymentData.paymentId ?: "",  // API requires this field
+                user_id = paymentData.userId,
+                amount = paymentData.amount,
+                install_instance_id = installId
+            )
+            
+            // Log the request object
+            Log.d("LinkRunner", "Capture Payment Request: $capturePaymentRequest")
+            val response = getApiClient().apiService.capturePayment(capturePaymentRequest)
             
             if (response.isSuccessful) {
                 Result.success(Unit)
@@ -220,23 +243,33 @@ class LinkRunner private constructor() {
      * @param removePayment Payment data to be removed
      */
     suspend fun removePayment(removePayment: RemovePaymentRequest): Result<Unit> {
-        requireInitialized()
+        if (token == null) {
+            return Result.failure(Exception("Linkrunner token not initialized"))
+        }
         
         return try {
+            val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
             
-            val requestMap = mutableMapOf<String, Any?>(
-                "token" to token!!,
-                "platform" to "ANDROID",
-                "data" to mapOf("device_data" to deviceInfo),
-                "install_instance_id" to installId
+            // Create data map with device info
+            val dataMap = mapOf<String, Any>(
+                "device_data" to deviceInfo
             )
             
-            removePayment.paymentId?.let { requestMap["payment_id"] = it }
-            removePayment.userId?.let { requestMap["user_id"] = it }
+            // Create a proper RemovePaymentApiRequest object
+            val removePaymentRequest = RemovePaymentApiRequest(
+                token = token ?: "",
+                platform = "ANDROID",
+                data = dataMap,
+                payment_id = removePayment.paymentId ?: "",  // API requires this field
+                user_id = removePayment.userId ?: "",       // API requires this field
+                install_instance_id = installId
+            )
             
-            val response = getApiClient().apiService.removePayment(requestMap)
+            // Log the request object
+            Log.d("LinkRunner", "Remove Payment Request: $removePaymentRequest")
+            val response = getApiClient().apiService.removePayment(removePaymentRequest)
             
             if (response.isSuccessful) {
                 Result.success(Unit)
@@ -257,22 +290,41 @@ class LinkRunner private constructor() {
         eventName: String,
         eventData: Map<String, Any>? = null
     ): Result<Unit> {
-        requireInitialized()
+        if (token == null) {
+            return Result.failure(Exception("Linkrunner token not initialized"))
+        }
+        
+        if (eventName.isEmpty()) {
+            return Result.failure(Exception("Event name is required"))
+        }
         
         return try {
+            val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
             
-            val response = getApiClient().apiService.trackEvent(
-                mapOf(
-                    "token" to token!!,
-                    "event_name" to eventName,
-                    "event_data" to eventData,
-                    "platform" to "ANDROID",
-                    "device_data" to deviceInfo,
-                    "install_instance_id" to installId
-                )
+            // Prepare eventData for API call
+            val processedEventData = eventData?.let { data ->
+                // If eventData is not null, convert it to a Map<String, Any>
+                data.entries.associate { entry ->
+                    // Convert each entry value to non-null by using empty string for null values
+                    entry.key to (entry.value ?: "")
+                }
+            }
+            
+            // Create the TrackEventApiRequest object
+            val trackEventRequest = TrackEventApiRequest(
+                token = token ?: "",
+                event_name = eventName,
+                event_data = processedEventData,
+                platform = "ANDROID",
+                device_data = deviceInfo,
+                install_instance_id = installId
             )
+            
+            // Log the request object
+            Log.d("LinkRunner", "Track Event Request: $trackEventRequest")
+            val response = getApiClient().apiService.trackEvent(trackEventRequest)
             
             if (response.isSuccessful) {
                 Result.success(Unit)
@@ -289,21 +341,38 @@ class LinkRunner private constructor() {
      * @param userData User data to be associated with the session
      */
     suspend fun setUserData(userData: UserDataRequest): Result<Unit> {
-        requireInitialized()
+        if (token == null) {
+            return Result.failure(Exception("Linkrunner token not initialized"))
+        }
         
         return try {
+            val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
             
-            val response = getApiClient().apiService.setUserData(
-                mapOf(
-                    "token" to token!!,
-                    "user_data" to userData,
-                    "platform" to "ANDROID",
-                    "device_data" to deviceInfo,
-                    "install_instance_id" to installId
-                )
+            // Convert UserDataRequest to a Map to match Flutter's approach
+            val userDataMap = mapOf<String, Any?>(
+                "id" to userData.id,
+                "name" to userData.name,
+                "email" to userData.email,
+                "phone" to userData.phone,
+                "mixpanel_distinct_id" to userData.mixpanelDistinctId,
+                "amplitude_device_id" to userData.amplitudeDeviceId,
+                "posthog_distinct_id" to userData.posthogDistinctId
             )
+            
+            // Create a proper SetUserDataRequest object
+            val setUserDataRequest = SetUserDataRequest(
+                token = token ?: "",
+                user_data = userDataMap,
+                platform = "ANDROID",
+                device_data = deviceInfo,
+                install_instance_id = installId
+            )
+            
+            // Log the request object
+            Log.d("LinkRunner", "Set User Data Request: $setUserDataRequest")
+            val response = getApiClient().apiService.setUserData(setUserDataRequest)
             
             if (response.isSuccessful) {
                 Result.success(Unit)
@@ -320,7 +389,9 @@ class LinkRunner private constructor() {
      * This is used for deferred deep linking functionality
      */
     suspend fun triggerDeeplink(): Result<Unit> {
-        requireInitialized()
+        if (token == null) {
+            return Result.failure(Exception("Linkrunner token not initialized"))
+        }
         
         val storedDeeplink = loadDeeplinkUrl() ?: return Result.failure(Exception("No deeplink URL found"))
         
@@ -329,20 +400,24 @@ class LinkRunner private constructor() {
             val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
             intent.data = android.net.Uri.parse(storedDeeplink)
             intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            appContext.startActivity(intent)
+            applicationContext?.startActivity(intent) ?: throw IllegalStateException("Context not set")
             
             // Notify the server that the deeplink was triggered
+            val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
             
-            val response = getApiClient().apiService.deeplinkTriggered(
-                mapOf(
-                    "token" to token!!,
-                    "device_data" to deviceInfo,
-                    "install_instance_id" to installId,
-                    "platform" to "ANDROID"
-                )
+            // Create a proper DeeplinkTriggeredRequest object
+            val deeplinkTriggeredRequest = DeeplinkTriggeredRequest(
+                token = token ?: "",
+                device_data = deviceInfo,
+                install_instance_id = installId,
+                platform = "ANDROID"
             )
+            
+            // Log the request object
+            Log.d("LinkRunner", "Deeplink Triggered Request: $deeplinkTriggeredRequest")
+            val response = getApiClient().apiService.deeplinkTriggered(deeplinkTriggeredRequest)
             
             if (response.isSuccessful) {
                 Result.success(Unit)

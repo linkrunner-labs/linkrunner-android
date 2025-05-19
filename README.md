@@ -1,12 +1,14 @@
-# LinkRunner Android SDK
+# Linkrunner Android SDK
 
-LinkRunner is a native Android SDK that provides essential functionality for your Android applications.
+A native Android SDK for integrating Linkrunner functionality into your Android applications.
 
 ## Features
 
 - Easy initialization and setup
-- Thread-safe singleton pattern
-- Sample application included
+- User management and tracking
+- Payment tracking and management
+- Event tracking
+- Deeplink handling
 
 ## Requirements
 
@@ -68,20 +70,14 @@ To build the AAR file:
 The AAR file will be available at:
 `linkrunner/build/outputs/aar/linkrunner-release.aar`
 
+## Documentation
+
+For setup instructions, usage examples, and API reference, please visit:
+
+[Linkrunner Android SDK Documentation](https://docs.linkrunner.io/sdk/android/installation)
+
 ## License
 
-```
-Copyright 2023 Your Name
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-   http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
+Copyright (c) 2025 Linkrunner Private Limited

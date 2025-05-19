@@ -8,14 +8,12 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
-import javax.inject.Inject
-import javax.inject.Singleton
+
 
 /**
  * API client for handling network requests
  */
-@Singleton
-internal class ApiClient @Inject constructor(private val context: Context) {
+internal class ApiClient(private val context: Context) {
     private val baseUrl = "https://api.linkrunner.io/"
     
     private val okHttpClient by lazy {

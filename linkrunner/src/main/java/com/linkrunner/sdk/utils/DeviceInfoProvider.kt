@@ -88,12 +88,26 @@ internal class DeviceInfoProvider(private val context: Context) {
     private fun getNetworkType(): String {
         return try {
             val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-            val networkInfo = connectivityManager.activeNetworkInfo
             
-            when (networkInfo?.type) {
-                android.net.ConnectivityManager.TYPE_WIFI -> "Wi-Fi"
-                android.net.ConnectivityManager.TYPE_MOBILE -> "Mobile Network"
-                else -> "Unknown"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = connectivityManager.activeNetwork ?: return "Not Connected"
+                val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return "Unknown"
+                
+                return when {
+                    capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
+                    capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "Mobile Network"
+                    capabilities.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
+                    else -> "Unknown"
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val networkInfo = connectivityManager.activeNetworkInfo
+                @Suppress("DEPRECATION")
+                when (networkInfo?.type) {
+                    android.net.ConnectivityManager.TYPE_WIFI -> "Wi-Fi"
+                    android.net.ConnectivityManager.TYPE_MOBILE -> "Mobile Network"
+                    else -> "Unknown"
+                }
             }
         } catch (e: Exception) {
             "Unknown"

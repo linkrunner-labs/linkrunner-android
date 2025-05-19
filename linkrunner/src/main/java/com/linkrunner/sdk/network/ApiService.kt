@@ -1,5 +1,6 @@
 package com.linkrunner.sdk.network
 
+import com.linkrunner.sdk.models.request.*
 import com.linkrunner.sdk.models.response.BaseResponse
 import com.linkrunner.sdk.models.response.InitResponse
 import com.linkrunner.sdk.models.response.TriggerResponse
@@ -14,43 +15,43 @@ internal interface ApiService {
      * Initialize the SDK with the server
      */
     @POST("api/client/init")
-    suspend fun initialize(@Body body: Map<String, Any?>): Response<InitResponse>
+    suspend fun initialize(@Body request: InitRequest): Response<InitResponse>
     
     /**
      * Trigger an action on the server
      */
     @POST("api/client/trigger")
-    suspend fun trigger(@Body body: Map<String, Any?>): Response<TriggerResponse>
+    suspend fun trigger(@Body request: TriggerRequest): Response<TriggerResponse>
     
     /**
      * Set user data for the current session
      */
     @POST("api/client/set-user-data")
-    suspend fun setUserData(@Body body: Map<String, Any?>): Response<BaseResponse>
+    suspend fun setUserData(@Body request: SetUserDataRequest): Response<BaseResponse>
     
     /**
      * Capture a payment event
      */
     @POST("api/client/capture-payment")
-    suspend fun capturePayment(@Body body: Map<String, Any?>): Response<BaseResponse>
+    suspend fun capturePayment(@Body request: CapturePaymentApiRequest): Response<BaseResponse>
     
     /**
      * Remove a previously captured payment
      */
     @POST("api/client/remove-captured-payment")
-    suspend fun removePayment(@Body body: Map<String, Any?>): Response<BaseResponse>
+    suspend fun removePayment(@Body request: RemovePaymentApiRequest): Response<BaseResponse>
     
     /**
      * Track a custom event
      */
     @POST("api/client/capture-event")
-    suspend fun trackEvent(@Body body: Map<String, Any?>): Response<BaseResponse>
+    suspend fun trackEvent(@Body request: TrackEventApiRequest): Response<BaseResponse>
     
     /**
      * Notify that a deeplink was triggered
      */
     @POST("api/client/deeplink-triggered")
-    suspend fun deeplinkTriggered(@Body body: Map<String, Any?>): Response<BaseResponse>
+    suspend fun deeplinkTriggered(@Body request: DeeplinkTriggeredRequest): Response<BaseResponse>
     
     /**
      * Get the current user's profile

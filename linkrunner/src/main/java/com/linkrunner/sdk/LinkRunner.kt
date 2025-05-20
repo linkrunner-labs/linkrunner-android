@@ -142,17 +142,9 @@ class LinkRunner private constructor() {
     }
     
     private suspend fun initApi(link: String? = null, source: String? = null): Result<InitResponse> {
-        // Add debugging at entry point
-        Log.i("MainActivity", "[DEBUG] initApi: Starting device info collection")
         return try {
-            Log.i("MainActivity", "[DEBUG] initApi: Creating DeviceInfoProvider")
             val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
-            Log.i("MainActivity", "[DEBUG] initApi: Calling getDeviceInfo()")
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
-            Log.i("MainActivity", "[DEBUG] initApi: Device info size: ${deviceInfo.size} entries")
-            
-            // Log the device info for debugging purposes
-            DeviceInfoLogger.logDeviceInfo(deviceInfo)
             
             val installId = getOrCreateInstallId()
             
@@ -167,19 +159,13 @@ class LinkRunner private constructor() {
                 source = source
             )
             
-            // Log the request object
-            Log.d("LinkRunner", "Init Request: $initRequest")
             val response = getApiClient().apiService.initialize(initRequest)
             
             ApiClient.handleResponse(response)
                 .onSuccess { initResponse ->
-                    Log.i("LinkRunner", "Init API Success Response: $initResponse")
                     initResponse.deeplink?.let { url ->
                         saveDeeplinkUrl(url)
                     }
-                }
-                .onFailure { error ->
-                    Log.e("LinkRunner", "Init API Error: ${error.localizedMessage}", error)
                 }
         } catch (e: Exception) {
             Result.failure(e)
@@ -248,16 +234,8 @@ class LinkRunner private constructor() {
                 event = "SIGNUP"
             )
             
-            // Log the request object
-            Log.d("LinkRunner", "Trigger Request: $triggerRequest")
             val response = getApiClient().apiService.trigger(triggerRequest)
             ApiClient.handleResponse(response)
-                .onSuccess { triggerResponse ->
-                    Log.i("LinkRunner", "Signup API Success Response: $triggerResponse")
-                }
-                .onFailure { error ->
-                    Log.e("LinkRunner", "Signup API Error: ${error.localizedMessage}", error)
-                }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -293,16 +271,12 @@ class LinkRunner private constructor() {
                 install_instance_id = installId
             )
             
-            // Log the request object
-            Log.d("LinkRunner", "Capture Payment Request: $capturePaymentRequest")
             val response = getApiClient().apiService.capturePayment(capturePaymentRequest)
             
             if (response.isSuccessful) {
-                Log.i("LinkRunner", "Capture Payment API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
                 val errorBody = response.errorBody()?.string()
-                Log.e("LinkRunner", "Capture Payment API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to capture payment: ${response.code()}"))
             }
         } catch (e: Exception) {
@@ -339,16 +313,12 @@ class LinkRunner private constructor() {
                 install_instance_id = installId
             )
             
-            // Log the request object
-            Log.d("LinkRunner", "Remove Payment Request: $removePaymentRequest")
             val response = getApiClient().apiService.removePayment(removePaymentRequest)
             
             if (response.isSuccessful) {
-                Log.i("LinkRunner", "Remove Payment API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
                 val errorBody = response.errorBody()?.string()
-                Log.e("LinkRunner", "Remove Payment API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to remove payment: ${response.code()}"))
             }
         } catch (e: Exception) {
@@ -397,16 +367,12 @@ class LinkRunner private constructor() {
                 install_instance_id = installId
             )
             
-            // Log the request object
-            Log.d("LinkRunner", "Track Event Request: $trackEventRequest")
             val response = getApiClient().apiService.trackEvent(trackEventRequest)
             
             if (response.isSuccessful) {
-                Log.i("LinkRunner", "Track Event API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
                 val errorBody = response.errorBody()?.string()
-                Log.e("LinkRunner", "Track Event API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to track event: ${response.code()}"))
             }
         } catch (e: Exception) {
@@ -462,16 +428,12 @@ class LinkRunner private constructor() {
                 install_instance_id = installId
             )
             
-            // Log the request object
-            Log.d("LinkRunner", "Set User Data Request: $setUserDataRequest")
             val response = getApiClient().apiService.setUserData(setUserDataRequest)
             
             if (response.isSuccessful) {
-                Log.i("LinkRunner", "Set User Data API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
                 val errorBody = response.errorBody()?.string()
-                Log.e("LinkRunner", "Set User Data API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to set user data: ${response.code()}"))
             }
         } catch (e: Exception) {
@@ -510,16 +472,12 @@ class LinkRunner private constructor() {
                 platform = "ANDROID"
             )
             
-            // Log the request object
-            Log.d("LinkRunner", "Deeplink Triggered Request: $deeplinkTriggeredRequest")
             val response = getApiClient().apiService.deeplinkTriggered(deeplinkTriggeredRequest)
             
             if (response.isSuccessful) {
-                Log.i("LinkRunner", "Deeplink Triggered API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
                 val errorBody = response.errorBody()?.string()
-                Log.e("LinkRunner", "Deeplink Triggered API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to notify deeplink triggered: ${response.code()}"))
             }
         } catch (e: Exception) {

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.linkrunner.sdk">
+
+    <!-- Required for the SDK to make network requests -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    
+    <!-- Required for collecting Advertising ID (GAID) -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+
+    <application>
+        <!-- SDK doesn't need to define any activities or services -->
+    </application>
+
+</manifest>

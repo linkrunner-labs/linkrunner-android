@@ -12,6 +12,8 @@ import com.linkrunner.sdk.network.ApiClient
 import com.linkrunner.sdk.utils.DeviceInfoLogger
 import com.linkrunner.sdk.utils.DeviceInfoProvider
 import com.linkrunner.sdk.utils.PreferenceManager
+import com.linkrunner.sdk.utils.SHA256
+import com.linkrunner.sdk.utils.UserDataProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,8 +31,32 @@ import android.util.Log
 @Keep
 class LinkRunner private constructor() {
     
-    var token: String? = null
+    // Token is now accessed via getter/setter with SharedPreferences persistence
+    private var _token: String? = null
+    var token: String?
+        get() {
+            if (_token == null) {
+                _token = applicationContext?.let {
+                    val preferenceManager = PreferenceManager(it)
+                    preferenceManager.getString(KEY_TOKEN)
+                }
+            }
+            return _token
+        }
+        set(value) {
+            _token = value
+            applicationContext?.let {
+                val preferenceManager = PreferenceManager(it)
+                if (value != null) {
+                    preferenceManager.saveString(KEY_TOKEN, value)
+                }
+            }
+        }
+    
     private val packageVersion = "1.0.0"
+    
+    // Configuration option for PII hashing
+    private var hashPII: Boolean = false
     
     private val baseUrl = "https://api.linkrunner.io"
     private var applicationContext: Context? = null
@@ -40,6 +66,8 @@ class LinkRunner private constructor() {
         private var instance: LinkRunner? = null
         private const val KEY_INSTALL_ID = "install_instance_id"
         private const val KEY_DEEPLINK_URL = "deeplink_url"
+        private const val KEY_HASH_PII = "hash_pii_enabled"
+        private const val KEY_TOKEN = "linkrunner_token"
         
         /**
          * Get the singleton instance of LinkRunner.
@@ -63,8 +91,14 @@ class LinkRunner private constructor() {
      * @return Result containing the initialization response or an exception
      */
     suspend fun init(context: Context, token: String, link: String? = null, source: String? = null): Result<InitResponse> {
-        this.token = token
         this.applicationContext = context.applicationContext
+        
+        // Set the token - this will also persist it to SharedPreferences
+        this.token = token
+        
+        // Load saved hashing preference
+        val preferenceManager = PreferenceManager(context.applicationContext)
+        this.hashPII = preferenceManager.getBoolean(KEY_HASH_PII)
         
         // Initialize dependencies
         initializeDependencies(context.applicationContext)
@@ -137,11 +171,16 @@ class LinkRunner private constructor() {
             Log.d("LinkRunner", "Init Request: $initRequest")
             val response = getApiClient().apiService.initialize(initRequest)
             
-            ApiClient.handleResponse(response).onSuccess { initResponse ->
-                initResponse.deeplink?.let { url ->
-                    saveDeeplinkUrl(url)
+            ApiClient.handleResponse(response)
+                .onSuccess { initResponse ->
+                    Log.i("LinkRunner", "Init API Success Response: $initResponse")
+                    initResponse.deeplink?.let { url ->
+                        saveDeeplinkUrl(url)
+                    }
                 }
-            }
+                .onFailure { error ->
+                    Log.e("LinkRunner", "Init API Error: ${error.localizedMessage}", error)
+                }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -167,18 +206,30 @@ class LinkRunner private constructor() {
             val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
-            
             // Create a TriggerRequest object matching Flutter SDK structure
             // Convert UserDataRequest to a Map to match Flutter's approach
-            val userDataMap = mapOf<String, Any?>(
-                "id" to userData.id,
-                "name" to userData.name,
-                "email" to userData.email,
-                "phone" to userData.phone,
-                "mixpanel_distinct_id" to userData.mixpanelDistinctId,
-                "amplitude_device_id" to userData.amplitudeDeviceId,
-                "posthog_distinct_id" to userData.posthogDistinctId
-            )
+            // Hash sensitive fields (name, email, phone) with SHA-256 only if hashing is enabled
+            val userDataMap = if (isPIIHashingEnabled()) {
+                mapOf<String, Any?>(
+                    "id" to userData.id,
+                    "name" to userData.name?.let { hashWithSHA256(it) },
+                    "email" to userData.email?.let { hashWithSHA256(it) },
+                    "phone" to userData.phone?.let { hashWithSHA256(it) },
+                    "mixpanel_distinct_id" to userData.mixpanelDistinctId,
+                    "amplitude_device_id" to userData.amplitudeDeviceId,
+                    "posthog_distinct_id" to userData.posthogDistinctId
+                )
+            } else {
+                mapOf<String, Any?>(
+                    "id" to userData.id,
+                    "name" to userData.name,
+                    "email" to userData.email,
+                    "phone" to userData.phone,
+                    "mixpanel_distinct_id" to userData.mixpanelDistinctId,
+                    "amplitude_device_id" to userData.amplitudeDeviceId,
+                    "posthog_distinct_id" to userData.posthogDistinctId
+                )
+            }                
             
             // Create data map with device info and additional data
             val dataMap = mutableMapOf<String, Any>(
@@ -201,6 +252,12 @@ class LinkRunner private constructor() {
             Log.d("LinkRunner", "Trigger Request: $triggerRequest")
             val response = getApiClient().apiService.trigger(triggerRequest)
             ApiClient.handleResponse(response)
+                .onSuccess { triggerResponse ->
+                    Log.i("LinkRunner", "Signup API Success Response: $triggerResponse")
+                }
+                .onFailure { error ->
+                    Log.e("LinkRunner", "Signup API Error: ${error.localizedMessage}", error)
+                }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -241,8 +298,11 @@ class LinkRunner private constructor() {
             val response = getApiClient().apiService.capturePayment(capturePaymentRequest)
             
             if (response.isSuccessful) {
+                Log.i("LinkRunner", "Capture Payment API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e("LinkRunner", "Capture Payment API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to capture payment: ${response.code()}"))
             }
         } catch (e: Exception) {
@@ -284,8 +344,11 @@ class LinkRunner private constructor() {
             val response = getApiClient().apiService.removePayment(removePaymentRequest)
             
             if (response.isSuccessful) {
+                Log.i("LinkRunner", "Remove Payment API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e("LinkRunner", "Remove Payment API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to remove payment: ${response.code()}"))
             }
         } catch (e: Exception) {
@@ -339,8 +402,11 @@ class LinkRunner private constructor() {
             val response = getApiClient().apiService.trackEvent(trackEventRequest)
             
             if (response.isSuccessful) {
+                Log.i("LinkRunner", "Track Event API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e("LinkRunner", "Track Event API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to track event: ${response.code()}"))
             }
         } catch (e: Exception) {
@@ -361,17 +427,31 @@ class LinkRunner private constructor() {
             val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
             val installId = getOrCreateInstallId()
+                
             
             // Convert UserDataRequest to a Map to match Flutter's approach
-            val userDataMap = mapOf<String, Any?>(
-                "id" to userData.id,
-                "name" to userData.name,
-                "email" to userData.email,
-                "phone" to userData.phone,
-                "mixpanel_distinct_id" to userData.mixpanelDistinctId,
-                "amplitude_device_id" to userData.amplitudeDeviceId,
-                "posthog_distinct_id" to userData.posthogDistinctId
-            )
+            // Hash sensitive fields (name, email, phone) with SHA-256 only if hashing is enabled
+            val userDataMap = if (isPIIHashingEnabled()) {
+                mapOf<String, Any?>(
+                    "id" to userData.id,
+                    "name" to userData.name?.let { hashWithSHA256(it) },
+                    "email" to userData.email?.let { hashWithSHA256(it) },
+                    "phone" to userData.phone?.let { hashWithSHA256(it) },
+                    "mixpanel_distinct_id" to userData.mixpanelDistinctId,
+                    "amplitude_device_id" to userData.amplitudeDeviceId,
+                    "posthog_distinct_id" to userData.posthogDistinctId
+                )
+            } else {
+                mapOf<String, Any?>(
+                    "id" to userData.id,
+                    "name" to userData.name,
+                    "email" to userData.email,
+                    "phone" to userData.phone,
+                    "mixpanel_distinct_id" to userData.mixpanelDistinctId,
+                    "amplitude_device_id" to userData.amplitudeDeviceId,
+                    "posthog_distinct_id" to userData.posthogDistinctId
+                )
+            }
             
             // Create a proper SetUserDataRequest object
             val setUserDataRequest = SetUserDataRequest(
@@ -387,8 +467,11 @@ class LinkRunner private constructor() {
             val response = getApiClient().apiService.setUserData(setUserDataRequest)
             
             if (response.isSuccessful) {
+                Log.i("LinkRunner", "Set User Data API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e("LinkRunner", "Set User Data API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to set user data: ${response.code()}"))
             }
         } catch (e: Exception) {
@@ -432,13 +515,50 @@ class LinkRunner private constructor() {
             val response = getApiClient().apiService.deeplinkTriggered(deeplinkTriggeredRequest)
             
             if (response.isSuccessful) {
+                Log.i("LinkRunner", "Deeplink Triggered API Success Response: ${response.body()}")
                 Result.success(Unit)
             } else {
+                val errorBody = response.errorBody()?.string()
+                Log.e("LinkRunner", "Deeplink Triggered API Error: ${response.code()} - $errorBody")
                 Result.failure(Exception("Failed to notify deeplink triggered: ${response.code()}"))
             }
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+    
+    /**
+     * Clean up resources when the SDK is no longer needed
+     */
+    /**
+     * Enable or disable PII hashing
+     * @param enabled Whether PII hashing should be enabled
+     */
+    fun enablePIIHashing(enabled: Boolean = true) {
+        this.hashPII = enabled
+        val preferenceManager = PreferenceManager(applicationContext ?: throw IllegalStateException("Context not set"))
+        preferenceManager.saveBoolean(KEY_HASH_PII, enabled)
+    }
+    
+    /**
+     * Check if PII hashing is currently enabled
+     * @return true if PII hashing is enabled, false otherwise
+     */
+    fun isPIIHashingEnabled(): Boolean {
+        applicationContext?.let {
+            val preferenceManager = PreferenceManager(it)
+            this.hashPII = preferenceManager.getBoolean(KEY_HASH_PII)
+        }
+        return this.hashPII
+    }
+    
+    /**
+     * Hash a string using SHA-256 algorithm
+     * @param input The string to hash
+     * @return Hashed string in hexadecimal format
+     */
+    fun hashWithSHA256(input: String): String {
+        return SHA256.hash(input)
     }
     
     /**

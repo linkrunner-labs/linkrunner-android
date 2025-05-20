@@ -6,7 +6,10 @@ import androidx.annotation.Keep
 import com.linkrunner.sdk.models.request.*
 import com.linkrunner.sdk.models.response.InitResponse
 import com.linkrunner.sdk.models.response.TriggerResponse
+import com.linkrunner.sdk.models.request.CapturePaymentRequest
+import com.linkrunner.sdk.models.request.RemovePaymentRequest
 import com.linkrunner.sdk.network.ApiClient
+import com.linkrunner.sdk.utils.DeviceInfoLogger
 import com.linkrunner.sdk.utils.DeviceInfoProvider
 import com.linkrunner.sdk.utils.PreferenceManager
 import kotlinx.coroutines.CoroutineScope
@@ -105,9 +108,18 @@ class LinkRunner private constructor() {
     }
     
     private suspend fun initApi(link: String? = null, source: String? = null): Result<InitResponse> {
+        // Add debugging at entry point
+        Log.i("MainActivity", "[DEBUG] initApi: Starting device info collection")
         return try {
+            Log.i("MainActivity", "[DEBUG] initApi: Creating DeviceInfoProvider")
             val deviceInfoProvider = DeviceInfoProvider(applicationContext ?: throw IllegalStateException("Context not set"))
+            Log.i("MainActivity", "[DEBUG] initApi: Calling getDeviceInfo()")
             val deviceInfo = deviceInfoProvider.getDeviceInfo()
+            Log.i("MainActivity", "[DEBUG] initApi: Device info size: ${deviceInfo.size} entries")
+            
+            // Log the device info for debugging purposes
+            DeviceInfoLogger.logDeviceInfo(deviceInfo)
+            
             val installId = getOrCreateInstallId()
             
             // Create a proper request object instead of a raw map

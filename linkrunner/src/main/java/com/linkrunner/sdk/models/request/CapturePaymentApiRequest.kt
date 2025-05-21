@@ -10,5 +10,7 @@ internal data class CapturePaymentApiRequest(
     val payment_id: String,
     val user_id: String,
     val amount: Double,
+    val type: String,
+    val status: String,
     val install_instance_id: String
 )

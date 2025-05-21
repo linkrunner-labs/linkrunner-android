@@ -275,6 +275,8 @@ class LinkRunner private constructor() {
                 payment_id = paymentData.paymentId ?: "",  // API requires this field
                 user_id = paymentData.userId,
                 amount = paymentData.amount,
+                type = paymentData.type.value,
+                status = paymentData.status.value,
                 install_instance_id = installId
             )
             

@@ -46,10 +46,8 @@ internal class DeviceInfoProvider(private val context: Context) {
         try {
             // App info
             val packageInfo: PackageInfo = packageManager.getPackageInfo(packageName, 0)
-            
             deviceInfo["application_name"] = getApplicationName()
             deviceInfo["app_version"] = packageInfo.versionName ?: ""
-            // Get the version code compatible with all API levels
             deviceInfo["build_number"] = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 packageInfo.longVersionCode.toString()
             } else {
@@ -58,65 +56,64 @@ internal class DeviceInfoProvider(private val context: Context) {
             }
             deviceInfo["bundle_id"] = packageName
             deviceInfo["version"] = packageInfo.versionName ?: ""
-            
+
             // Device info
             deviceInfo["device_id"] = getDeviceId()
             deviceInfo["device_name"] = "${Build.MANUFACTURER} ${Build.MODEL}"
-            deviceInfo["device_model"] = Build.MODEL
-            deviceInfo["device"] = Build.DEVICE ?: ""  // Hardware name/codename
             deviceInfo["manufacturer"] = Build.MANUFACTURER
             deviceInfo["brand"] = Build.BRAND
-            deviceInfo["android_version"] = Build.VERSION.RELEASE ?: ""
-            deviceInfo["system_version"] = Build.VERSION.RELEASE ?: ""  // Alias for android_version
-            deviceInfo["api_level"] = Build.VERSION.SDK_INT
-            deviceInfo["platform"] = "ANDROID"
-            deviceInfo["build_id"] = Build.ID ?: ""
-            deviceInfo["base_os"] = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Build.VERSION.BASE_OS ?: ""
-            } else { "" }
-            deviceInfo["device_display"] = getDisplayInfo()  // Screen display information
-            deviceInfo["device_type"] = getDeviceType()  // Phone, tablet, etc.
-            
-            // Additional device information
+            deviceInfo["system_version"] = Build.VERSION.RELEASE ?: ""
+            deviceInfo["version"] = packageInfo.versionName ?: ""
+            deviceInfo["connectivity"] = getNetworkType()
             deviceInfo["user_agent"] = getUserAgent()
-            
-            // Carrier information
+            deviceInfo["gaid"] = getAdvertisingId() ?: ""
+            // idfa and idfv are iOS only, set as empty string for Android
+            deviceInfo["idfa"] = ""
+            deviceInfo["idfv"] = ""
+
+            // Carrier info as array
             val carrierName = getCarrierName()
-            if (carrierName.isNotEmpty()) {
-                deviceInfo["carrier"] = listOf(carrierName)
-            } else {
-                deviceInfo["carrier"] = listOf<String>()
-            }
-            
+            deviceInfo["carrier"] = if (carrierName.isNotEmpty()) listOf(carrierName) else listOf<String>()
+
             // IP Address
             getIpAddress()?.let { ipAddress ->
                 deviceInfo["device_ip"] = ipAddress
             }
-            
-            // Network info
-            deviceInfo["connectivity"] = getNetworkType()
-            
-            // Advertising ID (GAID)
-            getAdvertisingId()?.let { gaid ->
-                deviceInfo["gaid"] = gaid
-            }
-            
-            // Play Store details
+
+            // Play Store details (install referrer)
             try {
                 val installReferrerInfo = getInstallReferrerInfo()
                 installReferrerInfo?.let { referrerInfo ->
-                    deviceInfo["install_referrer"] = referrerInfo.installReferrer ?: ""
-                    deviceInfo["referrer_click_timestamp"] = referrerInfo.referrerClickTimestampSeconds
-                    deviceInfo["install_begin_timestamp"] = referrerInfo.installBeginTimestampSeconds
-                    deviceInfo["google_play_instant"] = referrerInfo.googlePlayInstantParam
-                    deviceInfo["install_version"] = referrerInfo.installVersion ?: ""
+                    // Set install_ref for parity
+                    deviceInfo["install_ref"] = referrerInfo.installReferrer ?: ""
+                    // install_ref_url
+                    val installReferrerStr = referrerInfo.installReferrer ?: ""
+                    deviceInfo["install_ref_url"] = try {
+                        java.net.URL(installReferrerStr).toString()
+                    } catch (e: Exception) {
+                        ""
+                    }
+                    // install_ref_hashCode (with capital C for backend parity)
+                    deviceInfo["install_ref_hashCode"] = installReferrerStr.hashCode()
+                    // install_ref_install_version (snake_case for backend)
+                    deviceInfo["install_ref_install_version"] = referrerInfo.installVersion ?: ""
+                    // install_ref_installBeginTimestampSeconds
+                    // install_ref_referrerClickTimestampSeconds
+                    deviceInfo["install_ref_installBeginTimestampSeconds"] = referrerInfo.installBeginTimestampSeconds
+                    deviceInfo["install_ref_referrerClickTimestampSeconds"] = referrerInfo.referrerClickTimestampSeconds
+                    // installBeginTimestampServerSeconds (top-level, as in backend)
+                    deviceInfo["installBeginTimestampServerSeconds"] = referrerInfo.installBeginTimestampServerSeconds
+                    // referrerClickTimestampServerSeconds (top-level, as in backend)
+                    deviceInfo["referrerClickTimestampServerSeconds"] = referrerInfo.referrerClickTimestampServerSeconds
+                    // Optionally, keep googlePlayInstantParam if needed by backend
+                    deviceInfo["install_ref_googlePlayInstantParam"] = referrerInfo.googlePlayInstantParam
                 }
             } catch (e: Exception) {
                 if (BuildConfig.DEBUG) {
                     e.printStackTrace()
                 }
             }
-            
+           
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) {
                 e.printStackTrace()

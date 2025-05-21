@@ -53,7 +53,7 @@ class LinkRunner private constructor() {
             }
         }
     
-    private val packageVersion = "1.0.0"
+    private val packageVersion = "1.1.2"
     
     // Configuration option for PII hashing
     private var hashPII: Boolean = false

@@ -148,10 +148,14 @@ class LinkRunner private constructor() {
             
             val installId = getOrCreateInstallId()
             
+            // Get the app version from device info
+            val appVersion = deviceInfo["app_version"] as? String ?: ""
+            
             // Create a proper request object instead of a raw map
             val initRequest = InitRequest(
                 token = token ?: "",
                 package_version = packageVersion,
+                app_version = appVersion,
                 device_data = deviceInfo,
                 platform = "ANDROID",
                 install_instance_id = installId,

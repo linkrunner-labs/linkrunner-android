@@ -6,6 +6,7 @@ package com.linkrunner.sdk.models.request
 internal data class InitRequest(
     val token: String,
     val package_version: String,
+    val app_version: String,
     val device_data: Map<String, Any>,
     val platform: String,
     val install_instance_id: String,

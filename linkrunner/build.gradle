@@ -3,6 +3,7 @@ plugins {
     id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.dokka' version '1.9.10'
     id 'maven-publish'
+    id 'signing'
 }
 
 android {
@@ -12,8 +13,8 @@ android {
     defaultConfig {
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        versionCode 5
+        versionName "1.1.3"
 
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -71,6 +72,7 @@ dependencies {
     // Play Services
     implementation 'com.google.android.gms:play-services-ads-identifier:18.0.1'
     implementation 'com.google.android.gms:play-services-appset:16.0.2'
+    implementation 'com.android.installreferrer:installreferrer:2.2'
     
     // Testing
     testImplementation 'junit:junit:4.13.2'
@@ -82,19 +84,112 @@ dependencies {
     androidTestImplementation 'io.mockk:mockk-android:1.13.10'
 }
 
-// Configure publishing
+// Create Javadoc and sources JARs (required by Maven Central)
+tasks.register('sourcesJar', Jar) {
+    archiveClassifier.set('sources')
+    from android.sourceSets.main.java.srcDirs
+}
+
+tasks.register('javadocJar', Jar) {
+    dependsOn dokkaHtml
+    archiveClassifier.set('javadoc')
+    from dokkaHtml.outputDirectory
+}
+
+// Configure publishing for Maven Central
 publishing {
     publications {
         release(MavenPublication) {
-            groupId = 'com.linkrunner'
-            artifactId = 'sdk'
+            // Maven Central coordinates - use a domain you control for groupId
+            groupId = 'io.linkrunner'  // Assuming you control linkrunner.io domain
+            artifactId = 'android-sdk'
             version = android.defaultConfig.versionName
 
+            // Add POM information required by Maven Central
+            pom {
+                name = 'Linkrunner Android SDK'
+                description = 'A native Android SDK for integrating Linkrunner functionality into Android applications'
+                url = 'https://github.com/linkrunner/linkrunner-android'  // GitHub/source repo URL
+                
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/licenses/MIT'
+                    }
+                }
+                
+                developers {
+                    developer {
+                        id = 'darshil'
+                        name = 'Darshil Rathod'
+                        email = 'darshil@linkrunner.io'
+                    }
+                    developer {
+                        id = 'shofiya'
+                        name = 'Shofiya Bootwala'
+                        email = 'shofiya@linkrunner.io'
+                    }
+                }
+                
+                // SCM information required by Maven Central
+                scm {
+                    connection = 'scm:git:github.com/linkrunner/linkrunner-android.git'
+                    developerConnection = 'scm:git:ssh://github.com/linkrunner/linkrunner-android.git'
+                    url = 'https://github.com/linkrunner/linkrunner-android/tree/main'
+                }
+            }
+
+            // Add Javadoc and sources JARs (required by Maven Central)
+            artifact tasks.named('javadocJar')
+            artifact tasks.named('sourcesJar')
+            
+            // Fix dependency issue with metadata generation
+            suppressAllPomMetadataWarnings()
+            tasks.named('generateMetadataFileForReleasePublication') {
+                dependsOn(tasks.named('sourcesJar'), tasks.named('javadocJar'))
+            }
+
+            // The components.release is available after evaluation
             afterEvaluate {
-                from components.release
+                from components.findByName('release')
             }
         }
     }
+    
+    repositories {
+        maven {
+            name = 'mavenCentral'
+            
+            def releasesRepoUrl = 'https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/'
+            def snapshotsRepoUrl = 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
+            url = version.endsWith('SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+
+            credentials {
+                // Sonatype OSSRH credentials - stored securely
+                username = findProperty('ossrhUsername') ?: System.getenv('OSSRH_USERNAME')
+                password = findProperty('ossrhPassword') ?: System.getenv('OSSRH_PASSWORD')
+            }
+        }
+    }
+}
+
+
+
+// Signing configuration
+signing {
+    // Only sign for non-SNAPSHOT releases
+    required { !version.endsWith('SNAPSHOT') }
+    
+    // Use signingConfigs from local.properties
+    def signingKeyId = findProperty('signing.keyId')
+    def signingPassword = findProperty('signing.password')
+    def signingSecretKeyRingFile = findProperty('signing.secretKeyRingFile')
+    
+    if (signingKeyId != null && signingPassword != null && signingSecretKeyRingFile != null) {
+        useInMemoryPgpKeys(signingKeyId, signingPassword)
+    }
+    
+    sign publishing.publications.release
 }
 
 // Dokka documentation

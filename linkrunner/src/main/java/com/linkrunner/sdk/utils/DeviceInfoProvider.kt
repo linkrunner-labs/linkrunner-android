@@ -84,28 +84,21 @@ internal class DeviceInfoProvider(private val context: Context) {
             try {
                 val installReferrerInfo = getInstallReferrerInfo()
                 installReferrerInfo?.let { referrerInfo ->
-                    // Set install_ref for parity
                     deviceInfo["install_ref"] = referrerInfo.installReferrer ?: ""
-                    // install_ref_url
                     val installReferrerStr = referrerInfo.installReferrer ?: ""
                     deviceInfo["install_ref_url"] = try {
                         java.net.URL(installReferrerStr).toString()
                     } catch (e: Exception) {
                         ""
                     }
-                    // install_ref_hashCode (with capital C for backend parity)
+                    
                     deviceInfo["install_ref_hashCode"] = installReferrerStr.hashCode()
-                    // install_ref_install_version (snake_case for backend)
                     deviceInfo["install_ref_install_version"] = referrerInfo.installVersion ?: ""
-                    // install_ref_installBeginTimestampSeconds
-                    // install_ref_referrerClickTimestampSeconds
                     deviceInfo["install_ref_installBeginTimestampSeconds"] = referrerInfo.installBeginTimestampSeconds
                     deviceInfo["install_ref_referrerClickTimestampSeconds"] = referrerInfo.referrerClickTimestampSeconds
-                    // installBeginTimestampServerSeconds (top-level, as in backend)
                     deviceInfo["installBeginTimestampServerSeconds"] = referrerInfo.installBeginTimestampServerSeconds
-                    // referrerClickTimestampServerSeconds (top-level, as in backend)
                     deviceInfo["referrerClickTimestampServerSeconds"] = referrerInfo.referrerClickTimestampServerSeconds
-                    // Optionally, keep googlePlayInstantParam if needed by backend
+                    deviceInfo["referrerClickTimestampServerSeconds"] = referrerInfo.referrerClickTimestampServerSeconds
                     deviceInfo["install_ref_googlePlayInstantParam"] = referrerInfo.googlePlayInstantParam
                 }
             } catch (e: Exception) {

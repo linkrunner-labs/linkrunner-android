@@ -13,7 +13,6 @@ import com.linkrunner.sdk.utils.DeviceInfoLogger
 import com.linkrunner.sdk.utils.DeviceInfoProvider
 import com.linkrunner.sdk.utils.PreferenceManager
 import com.linkrunner.sdk.utils.SHA256
-import com.linkrunner.sdk.utils.UserDataProcessor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -200,26 +199,30 @@ class LinkRunner private constructor() {
             // Convert UserDataRequest to a Map to match Flutter's approach
             // Hash sensitive fields (name, email, phone) with SHA-256 only if hashing is enabled
             val userDataMap = if (isPIIHashingEnabled()) {
-                mapOf<String, Any?>(
-                    "id" to userData.id,
-                    "name" to userData.name?.let { hashWithSHA256(it) },
-                    "email" to userData.email?.let { hashWithSHA256(it) },
-                    "phone" to userData.phone?.let { hashWithSHA256(it) },
-                    "mixpanel_distinct_id" to userData.mixpanelDistinctId,
-                    "amplitude_device_id" to userData.amplitudeDeviceId,
-                    "posthog_distinct_id" to userData.posthogDistinctId
-                )
-            } else {
-                mapOf<String, Any?>(
-                    "id" to userData.id,
-                    "name" to userData.name,
-                    "email" to userData.email,
-                    "phone" to userData.phone,
-                    "mixpanel_distinct_id" to userData.mixpanelDistinctId,
-                    "amplitude_device_id" to userData.amplitudeDeviceId,
-                    "posthog_distinct_id" to userData.posthogDistinctId
-                )
-            }                
+    mapOf<String, Any?>(
+        "id" to userData.id,
+        "name" to userData.name?.let { hashWithSHA256(it) },
+        "email" to userData.email?.let { hashWithSHA256(it) },
+        "phone" to userData.phone?.let { hashWithSHA256(it) },
+        "mixpanel_distinct_id" to userData.mixpanelDistinctId,
+        "amplitude_device_id" to userData.amplitudeDeviceId,
+        "posthog_distinct_id" to userData.posthogDistinctId,
+        "user_created_at" to userData.userCreatedAt,
+        "is_first_time_user" to userData.isFirstTimeUser
+    )
+} else {
+    mapOf<String, Any?>(
+        "id" to userData.id,
+        "name" to userData.name,
+        "email" to userData.email,
+        "phone" to userData.phone,
+        "mixpanel_distinct_id" to userData.mixpanelDistinctId,
+        "amplitude_device_id" to userData.amplitudeDeviceId,
+        "posthog_distinct_id" to userData.posthogDistinctId,
+        "user_created_at" to userData.userCreatedAt,
+        "is_first_time_user" to userData.isFirstTimeUser
+    )
+}
             
             // Create data map with device info and additional data
             val dataMap = mutableMapOf<String, Any>(

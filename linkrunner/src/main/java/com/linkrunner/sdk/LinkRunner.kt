@@ -207,6 +207,7 @@ class LinkRunner private constructor() {
         "mixpanel_distinct_id" to userData.mixpanelDistinctId,
         "amplitude_device_id" to userData.amplitudeDeviceId,
         "posthog_distinct_id" to userData.posthogDistinctId,
+        "clevertap_id" to userData.clevertapId,
         "user_created_at" to userData.userCreatedAt,
         "is_first_time_user" to userData.isFirstTimeUser
     )
@@ -219,6 +220,7 @@ class LinkRunner private constructor() {
         "mixpanel_distinct_id" to userData.mixpanelDistinctId,
         "amplitude_device_id" to userData.amplitudeDeviceId,
         "posthog_distinct_id" to userData.posthogDistinctId,
+        "clevertap_id" to userData.clevertapId,
         "user_created_at" to userData.userCreatedAt,
         "is_first_time_user" to userData.isFirstTimeUser
     )

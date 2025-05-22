@@ -13,6 +13,7 @@ data class UserDataRequest(
     @SerializedName("mixpanel_distinct_id") val mixpanelDistinctId: String? = null,
     @SerializedName("amplitude_device_id") val amplitudeDeviceId: String? = null,
     @SerializedName("posthog_distinct_id") val posthogDistinctId: String? = null,
+    @SerializedName("clevertap_id") val clevertapId: String? = null,
     @SerializedName("user_created_at") val userCreatedAt: String? = null,
     @SerializedName("is_first_time_user") val isFirstTimeUser: Boolean? = null,
 )
